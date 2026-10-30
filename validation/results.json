@@ -1,0 +1,98 @@
+{
+  "meta": {
+    "package": "survagent 0.1.0",
+    "reps": 5000,
+    "seed": 20261030,
+    "python": "3.12.16",
+    "numpy": "2.5.4",
+    "run_at": "2026-10-30T20:32:44+00:00",
+    "seconds": 31.8,
+    "design": {
+      "median_control": 12.0,
+      "accrual": 24.0,
+      "followup": 12.0
+    }
+  },
+  "results": [
+    {
+      "check": "logrank_type1_error",
+      "description": "Log-rank rejection rate under H0 (HR = 1), n = 200",
+      "target": 0.05,
+      "estimate": 0.0488,
+      "mc_ci_95": [
+        0.043166788231898734,
+        0.05512598600332083
+      ],
+      "mc_se": 0.0030822070014844883,
+      "passed": true
+    },
+    {
+      "check": "cox_hr_ci_coverage",
+      "description": "Coverage of 95% Wald CI for HR = 0.7, n = 200",
+      "target": 0.95,
+      "estimate": 0.9564,
+      "mc_ci_95": [
+        0.9503808291024459,
+        0.961718412562106
+      ],
+      "mc_se": 0.0030822070014844896,
+      "passed": true,
+      "true_log_hr": -0.35667494393873245,
+      "mean_log_hr": -0.361887814532429,
+      "bias": -0.0052128705936965725,
+      "empirical_se": 0.17249330481439293,
+      "mean_model_se": 0.17567200461263102
+    },
+    {
+      "check": "km_ci_coverage",
+      "description": "Coverage of 95% log-log CI for S(12) = 0.5, n = 100",
+      "target": 0.95,
+      "estimate": 0.9546,
+      "mc_ci_95": [
+        0.9484723254351166,
+        0.9600296799564376
+      ],
+      "mc_se": 0.0030822070014844896,
+      "passed": true
+    },
+    {
+      "check": "designed_power",
+      "description": "Simulated power of the design from sample_size (HR = 0.7, N = 370); target 0.80",
+      "target": 0.8,
+      "estimate": 0.797,
+      "mc_ci_95": [
+        0.7856248290803202,
+        0.8079191559643161
+      ],
+      "mc_se": 0.005656854249492379,
+      "passed": true,
+      "total_n": 370,
+      "target_events": 247,
+      "mean_simulated_events": 247.1182
+    },
+    {
+      "check": "ph_test_size",
+      "description": "PH-test rejection rate when PH holds (HR = 0.7), n = 400",
+      "target": 0.05,
+      "estimate": 0.0462,
+      "mc_ci_95": [
+        0.0407216699236964,
+        0.05237509636163745
+      ],
+      "mc_se": 0.0030822070014844883,
+      "passed": true
+    },
+    {
+      "check": "ph_test_power_delayed_effect",
+      "description": "PH-test rejection rate with a delayed effect (HR 1 for 6 months, then 0.5), n = 400",
+      "target": null,
+      "estimate": 0.6486,
+      "mc_ci_95": [
+        0.6352576869187668,
+        0.6617141520631621
+      ],
+      "passed": null,
+      "note": "Descriptive: how often the PH check flags a realistic non-proportional effect."
+    }
+  ]
+}
