@@ -24,6 +24,8 @@ analysis tools. When you report results:
 - pass on every item in `notes` and `data_notes` (assumption checks and warnings);
 - cite the provenance (function, dataset sha256) so results can be reproduced;
 - do not claim causality from observational data.
+Use search_guidance to find regulatory guidance or literature that supports a
+methodological choice; quote the passage and cite its title and page.
 """
 
 server = _Server("survagent", instructions=INSTRUCTIONS)
@@ -105,6 +107,14 @@ def simulate_power(hazard_ratio: float, n_total: int, median_control: float, acc
                                      median_control=median_control, accrual=accrual,
                                      followup=followup, alpha=alpha, allocation=allocation,
                                      n_sim=n_sim, seed=seed)
+
+
+@_tool
+def search_guidance(query: str, k: int = 5, method: str | None = None) -> dict:
+    """Search FDA/ICH statistical guidance and PubMed abstracts on survival methods.
+    Returns passages with document title, page and source for citation.
+    method: 'hybrid' (default when available), 'bm25' or 'dense'."""
+    return tools.search_guidance_tool(query, k, method)
 
 
 def main() -> None:

@@ -38,14 +38,30 @@ def test_unknown_column_message_lists_columns(leukemia_path):
 mcp = pytest.importorskip("mcp")
 
 
-def test_mcp_server_end_to_end(leukemia_path):
+def _tiny_index(tmp_path):
+    from survagent.rag.index import build_index
+
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "pubmed.jsonl").write_text(json.dumps(
+        {"pmid": "42", "title": "Restricted mean survival time",
+         "abstract": "RMST is an alternative to the hazard ratio when hazards are not proportional.",
+         "journal": "Stat Med", "year": "2020"}) + "\n")
+    (corpus / "sources.json").write_text(json.dumps([{"kind": "pubmed", "file": "pubmed.jsonl"}]))
+    build_index(corpus, tmp_path / "index", dense=False)
+    return str(tmp_path / "index")
+
+
+def test_mcp_server_end_to_end(leukemia_path, tmp_path):
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
+
+    index_dir = _tiny_index(tmp_path)
 
     async def run():
         src = str(Path(__file__).resolve().parents[1] / "src")
         params = StdioServerParameters(
-            command=sys.executable, args=["-m", "survagent.mcp_server"], env={"PYTHONPATH": src}
+            command=sys.executable, args=["-m", "survagent.mcp_server"], env={"PYTHONPATH": src, "SURVAGENT_INDEX": index_dir}
         )
         async with stdio_client(params) as (r, w):
             async with ClientSession(r, w) as session:
@@ -58,10 +74,12 @@ def test_mcp_server_end_to_end(leukemia_path):
                     {"dataset_id": ds_id, "time_col": "time", "event_col": "event", "covariates": ["treatment"]},
                 )
                 bad = await session.call_tool("events_required", {"hazard_ratio": 1.0})
-                return names, json.loads(res.content[0].text), bad
+                hits = await session.call_tool("search_guidance", {"query": "non-proportional hazards RMST"})
+                return names, json.loads(res.content[0].text), bad, json.loads(hits.content[0].text)
 
-    names, cox, bad = asyncio.run(run())
-    assert {"load_dataset", "cox_regression", "sample_size", "simulate_power"} <= names
+    names, cox, bad, hits = asyncio.run(run())
+    assert {"load_dataset", "cox_regression", "sample_size", "simulate_power", "search_guidance"} <= names
+    assert hits["result"]["results"][0]["source"].startswith("PMID 42")
     assert cox["result"]["coefficients"][0]["coef"] == pytest.approx(1.572, abs=1e-3)
     is_error = getattr(bad, "is_error", None)
     if is_error is None:  # MCP SDK 1.x

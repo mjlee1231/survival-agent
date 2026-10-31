@@ -14,6 +14,10 @@ whether an agent's answers can be trusted:
 - **The tools are validated.** They are checked against published results, an
   independent reference implementation, and a simulation study of their operating
   characteristics.
+- **Evidence retrieval is evaluated, not assumed.** A `search_guidance` tool returns
+  citable passages (document, page) from FDA/ICH statistical guidance and PubMed
+  abstracts, and its accuracy is measured on a labelled question set with
+  bootstrap confidence intervals.
 
 ## Validation
 
@@ -36,6 +40,54 @@ Latest simulation study (5,000 replicates per check; details in
 | PH-test size when PH holds | 0.05 | 0.046 |
 | PH-test detection of a 6-month delayed effect | — | 0.649 |
 
+## Evidence retrieval (RAG) and its evaluation
+
+**Corpus.** Three FDA guidance documents — E9 *Statistical Principles for Clinical
+Trials* (1998), E9(R1) *Estimands and Sensitivity Analysis* (2021) and *Adjusting for
+Covariates in Randomized Clinical Trials* (2023) — plus 200 PubMed abstracts on
+survival-analysis methods in trials. `rag_eval/fetch_corpus.py` rebuilds it; the corpus
+itself is not committed. Documents are split into ~180-word passages within pages, so
+every result can be cited by document and page.
+
+**Retrievers.** BM25 (lexical), dense retrieval with `all-MiniLM-L6-v2` sentence
+embeddings (cosine similarity), and a hybrid that combines the two with reciprocal
+rank fusion.
+
+**Evaluation design.**
+- 31 questions written in a practitioner's words rather than the guidance's wording,
+  so lexical overlap does not make the task easy.
+- Relevance is labelled by *evidence phrases*: a passage counts only if it comes from
+  the right document and contains a phrase from the section that answers the
+  question (1–4 passages per question). Labels are independent of chunking, so
+  chunk sizes can be compared, and `--check-labels` confirms every question has
+  evidence in the corpus.
+- Questions are the sampling unit: percentile bootstrap CIs for each metric, and
+  paired comparisons between methods (paired bootstrap CI and sign-flip
+  randomization test).
+
+**Results** (31 questions, top-10 retrieval; full report in
+[`rag_eval/report.md`](rag_eval/report.md)):
+
+| Metric | BM25 | Dense | Hybrid |
+| --- | --- | --- | --- |
+| hit@1 | 0.19 (0.06–0.35) | 0.06 (0.00–0.16) | 0.19 (0.06–0.35) |
+| hit@5 | 0.45 (0.29–0.61) | 0.42 (0.26–0.58) | 0.45 (0.29–0.65) |
+| hit@10 | 0.48 (0.32–0.68) | 0.65 (0.48–0.81) | 0.58 (0.42–0.74) |
+| MRR@10 | 0.31 (0.18–0.46) | 0.23 (0.14–0.33) | 0.30 (0.18–0.44) |
+
+**What this shows.**
+- No method is clearly better. Dense retrieval finds more answers somewhere in the
+  top 10 (+0.16 over BM25, paired 95% CI 0.00 to +0.35, p = 0.18) but ranks them
+  lower; hybrid is in between. With 31 questions the intervals are wide, so a larger
+  question set is needed before choosing a method.
+- Retrieval is the weak point: roughly half the questions have no answering passage
+  in the top 5. For BM25 misses, the top-5 passages were mostly the right guidance
+  but the wrong section (46%) or PubMed abstracts on the same topic (36%).
+- Larger passages helped BM25 (hit@5 0.29 with 100-word chunks vs 0.45–0.48 with
+  180–300 words; overlap = ¼ of chunk size in this comparison).
+- Next steps to test against this baseline: a cross-encoder reranker, a biomedical
+  embedding model, and section-aware chunking.
+
 ## Setup
 
 Requires Python 3.10+.
@@ -44,9 +96,15 @@ Requires Python 3.10+.
 cd survival-agent
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"            # dev adds pytest and lifelines (reference checks)
-pytest                             # unit, reference and MCP tests
+pip install -e ".[dev,rag]"        # dev: pytest, lifelines; rag: pypdf, sentence-transformers
+pytest                             # unit, reference, retrieval and MCP tests
 python validation/run_validation.py --reps 500   # quick simulation study
+
+# Evidence retrieval
+python rag_eval/fetch_corpus.py --email you@example.com   # download guidance + abstracts
+python rag_eval/build_index.py                            # chunk and embed
+python rag_eval/run_eval.py --check-labels                # every question has evidence?
+python rag_eval/run_eval.py --chunk-sizes 100 180 300     # evaluation -> rag_eval/report.md
 ```
 
 ## Using it from an AI agent
@@ -83,6 +141,7 @@ with confidence intervals and any assumption warnings."*
 | `power_from_events` | Power for a given number of events |
 | `sample_size` | Total N under exponential survival and uniform accrual |
 | `simulate_power` | Monte Carlo check of a design's power, with a Monte Carlo CI |
+| `search_guidance` | Passages from FDA/ICH guidance and PubMed with document, page and source |
 
 ## Methods
 
@@ -102,18 +161,19 @@ and they are cross-checked against `lifelines`.
 
 ```
 src/survagent/     statistical methods, tool layer, MCP server
-tests/             published-value, reference, property and MCP tests
+src/survagent/rag/ chunking, retrievers (BM25, dense, hybrid), retrieval evaluation
+tests/             published-value, reference, property, retrieval and MCP tests
 validation/        simulation study and its latest report
+rag_eval/          corpus download, index build, question set, evaluation report
 data/              Freireich (1963) 6-MP leukemia trial (42 patients)
 ```
 
 ## Roadmap
 
-1. **Validated statistical tools behind MCP** — done (this release).
-2. **Evidence retrieval (RAG):** index regulatory guidance (ICH E9, E9(R1)) and
-   PubMed abstracts on survival methods; hybrid retrieval (BM25 + embeddings).
-   Evaluate retrieval on a labelled question set (recall@k, MRR) with bootstrap CIs,
-   and compare retrieval strategies on the same questions.
+1. **Validated statistical tools behind MCP** — done.
+2. **Evidence retrieval with statistical evaluation** — done (baseline above).
+   Next: reranking, biomedical embeddings, section-aware chunking, and a larger
+   question set.
 3. **Agent and end-to-end evaluation:** an agent that retrieves guidance, calls the
    statistical tools and drafts an interpretation for human review, citing both
    sources and provenance. Evaluate answer faithfulness, tool-call correctness and

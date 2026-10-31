@@ -9,6 +9,7 @@ any number an agent reports can be traced back and reproduced.
 from __future__ import annotations
 
 import hashlib
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +24,8 @@ from .km import kaplan_meier
 from .logrank import logrank_test
 
 _DATASETS: dict[str, dict[str, Any]] = {}
+_INDEX = None
+DEFAULT_INDEX_DIR = Path(__file__).resolve().parents[2] / "data" / "index"
 
 
 def _provenance(function: str, inputs: dict, dataset_id: str | None = None) -> dict:
@@ -131,6 +134,19 @@ def sample_size_tool(**kw) -> dict:
 
 def simulate_power_tool(**kw) -> dict:
     return {"result": simulate_power(**kw), "provenance": _provenance("simulate_power", kw)}
+
+
+def search_guidance_tool(query: str, k: int = 5, method: str | None = None) -> dict:
+    """Search the guidance/literature index (loaded once, on first use)."""
+    global _INDEX
+    if _INDEX is None:
+        from .rag.index import GuidanceIndex
+
+        _INDEX = GuidanceIndex(os.environ.get("SURVAGENT_INDEX", DEFAULT_INDEX_DIR))
+    res = _INDEX.search(query, k, method)
+    return {"result": res, "provenance": _provenance(
+        "search_guidance", {"query": query, "k": k, "method": res["method"],
+                            "corpus_sha256": res["corpus_sha256"]})}
 
 
 def _jsonable(v):
